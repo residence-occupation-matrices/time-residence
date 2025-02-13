@@ -1,0 +1,121 @@
+#+title: Investigation of Duplicate Timestamps
+#+date: 2021:06:07
+#+property: header-args :session duplicate :exports both
+
+As I reported in the previous meeting, there seem to be data points that have the same timestamp for an id, but different locations. Now, irrespective of there being same or different locations, I believe that there shouldn't exist any rows for the same timestamp either. I decided to check on the entire data between <2020-01-01> and <2020-12-31>.
+
+* Total duplicate timestamps
+If the count of unique timestamps is more than the total rows that we have, that means that there are duplicate timestamp entries. But we also need to consider the possibility of two different ids having the datapoint at the same timestamp. I used the following query, on the google console to get this number.
+
+#+begin_example sql
+SELECT 
+  count(id_adv) as total_ids,
+  sum(distinct_timestamps) as total_distinct_timestamps,
+  sum(collected_timestamps) as total_collected_timestamps,
+FROM
+  (SELECT
+    id_adv,
+    count(distinct(timestamp)) as distinct_timestamps,
+    count(timestamp) as collected_timestamps
+  FROM
+    `movilidadcovid.Movilidad.Hermosillo`
+  WHERE
+    DATE(timestamp) BETWEEN "2020-01-01"
+    AND "2020-12-31"
+  GROUP BY id_adv);
+#+end_example
+
+As shown in the table below, there is a difference of *935988* rows between collected and distinct timestamps. This means that there are these many entries, that are duplicate.
+
+| Total IDs | Total Distinct Timestamps | Total Collected Timestamps |
+|    306963 |                  79646464 |                   80582452 |
+
+* ID wise duplicate timestamps
+I also queried the number of duplicate entries for each ID. This will allow us to investigate in more detail, if required, to see which individuals have the most duplicate entries. And if the duplicate entries are spread uniformly or present for only a small number of individuals.
+
+#+begin_src sql
+SELECT
+    id_adv,
+    count(distinct(timestamp)) as distinct_timestamps,
+    count(timestamp) as collected_timestamps
+  FROM
+    `movilidadcovid.Movilidad.Hermosillo`
+  WHERE
+    DATE(timestamp) BETWEEN "2020-01-01"
+    AND "2020-12-31"
+  GROUP BY id_adv;
+#+end_src
+
+I've stored this data in a CSV locally.
+
+#+begin_src jupyter-python :results raw drawer
+import pandas as pd
+
+df = pd.read_csv("./bbmm-drive/id-wise-duplicate-timestamps.csv")
+df.shape
+#+end_src
+
+#+RESULTS:
+| 306963 | 4 |
+
+We can see that out of /306,963/ individuals, /267,157/ individuals don't have duplicate data. But there is some degree of duplicate data present. We need to determine what we want to do with this data, and which point of the duplicate do we want to consider.
+
+#+begin_src jupyter-python :results raw drawer
+df['duplicate_timestamps'].value_counts()
+#+end_src
+
+#+RESULTS:
+#+begin_example
+0      267157
+1       16228
+2        6447
+3        3520
+4        2184
+        ...  
+429         1
+549         1
+357         1
+320         1
+681         1
+Name: duplicate_timestamps, Length: 602, dtype: int64
+#+end_example
+
+I've also created a histogram plot for the distribution of duplicate data per number of individuals.
+#+begin_src jupyter-python :results file drawer :file ./duplicate-distribution.png
+import matplotlib.pyplot as plt
+
+fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True, figsize=(7,7))
+fig.subplots_adjust(hspace=0.2)
+
+ax1.hist(df['duplicate_timestamps'], bins=1000)
+ax2.hist(df['duplicate_timestamps'], bins=1000)
+ax3.hist(df['duplicate_timestamps'], bins=1000)
+ax1.set_ylim(250000, 270000)
+ax2.set_ylim(1000, 25000)
+ax3.set_ylim(0, 1000)
+ax1.set_xlim(0, 200)
+
+ax1.spines['bottom'].set_visible(False)
+ax2.spines['top'].set_visible(False)
+ax2.spines['bottom'].set_visible(False)
+ax3.spines['top'].set_visible(False)
+ax1.xaxis.tick_top()
+ax1.tick_params(labeltop=False)
+# ax2.xaxis.set_ticks([])
+ax3.xaxis.tick_bottom()
+
+d = 0.3
+kwargs = dict(marker=[(-1, -d), (1, d)], markersize=12,
+              linestyle="none", color="k", mec="k", mew=1, clip_on=False)
+ax1.plot([0, 1], [0, 0], transform=ax1.transAxes, **kwargs)
+ax2.plot([0, 0, 1, 1], [0, 1, 0, 1], transform=ax2.transAxes, **kwargs)
+ax3.plot([0, 1], [1, 1], transform=ax3.transAxes, **kwargs)
+ax3.set_xlabel("Number of duplicate points")
+ax2.set_ylabel("Number of individuals")
+plt.show()
+#+end_src
+
+#+RESULTS:
+[[file:./duplicate-distribution.png]]
+
+We can see that it is a decaying distribution but, even then, there are individuals that have a good amount of duplicate timestamps.

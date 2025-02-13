@@ -1,0 +1,91 @@
+#+TITLE: Plot_residence_matrix
+#+author: Chahak Mehta
+#+property: header-args :session resmat :async yes :eval no-export
+
+We have the residence matrix calculated. We will try to visualize this matrix to try and understand it better.
+
+#+begin_src jupyter-python
+import numpy as np
+import matplotlib.pyplot as plt
+import json
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+results = json.load(open('/Users/cmehta/data/contex/new_sigma_m/avg_res_mat_First_First.json', 'r'))
+results.keys()
+#+end_src
+
+#+RESULTS:
+: dict_keys(['full_residence_matrix', 'truncated_residence_matrix', 'agebs_to_remove'])
+
+#+begin_src jupyter-python
+res_mat = np.array(results['full_residence_matrix'])
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+fig, ax = plt.subplots(figsize=(14, 14))
+figure = ax.imshow(res_mat, cmap='Reds')
+fig.colorbar(figure, ax=ax)
+fig.savefig('/Users/cmehta/data/contex/new_sigma_m/matrix.png', dpi=500)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/c606ba7c29fe9c1fd8f14920ef25679613091077.png]]
+
+The residence matrix with the older method.
+
+#+begin_src jupyter-python
+old_results = json.load(open('/Users/cmehta/data/contex/avg_residence_matrices/avg_res_mat_First_First.json', 'r'))
+old_results.keys()
+#+end_src
+
+#+RESULTS:
+: dict_keys(['residence_matrix'])
+
+#+begin_src jupyter-python
+old_resmat = np.array(old_results['residence_matrix'])
+old_resmat.shape
+#+end_src
+
+#+RESULTS:
+| 582 | 582 |
+
+#+begin_src jupyter-python
+fig, ax = plt.subplots(figsize=(14, 14))
+figure = ax.imshow(old_resmat, cmap='Reds')
+fig.colorbar(figure, ax=ax)
+fig.savefig('/Users/cmehta/data/contex/old_res_matrix.png', dpi=500)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/76d08973229bebd9d52ef589f0acc12ab0079434.png]]
+
+First confirming if the agebs to be removed by both the methods are the same.
+
+#+begin_src jupyter-python
+np.all(np.array(results['agebs_to_remove']) == np.array(old_results['agebs_to_remove']))
+#+end_src
+
+#+RESULTS:
+: True
+
+We'd next like to see if the residence matrices calculated using both the methods are similar or not.
+#+begin_src jupyter-python
+# truncated_res_mat = np.array(results['truncated_residence_matrix'])
+# truncated_res_mat.shape
+res_mat.shape
+#+end_src
+
+#+RESULTS:
+| 582 | 582 |
+
+#+begin_src jupyter-python
+res_mat.sum(axis=0).argmax(), old_resmat.sum(axis=0).argmax()
+#+end_src
+
+#+RESULTS:
+| 438 | 176 |
