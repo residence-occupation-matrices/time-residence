@@ -1,0 +1,349 @@
+#+TITLE: Updated Sigma Estimation
+#+property: header-args :session sigma-estimation :exports both :eval no-export :async yes
+#+bibliography: references.bib
+#+latex_header: \usepackage[margin=0.5in]{geometry}
+
+* Estimators
+The first calculation follows the independent, non-overlapping Brownian-bridge
+likelihood described by [cite:@horneAnalyzingAnimalMovements2007]. Alternate
+observations serve as bridge midpoints, and the location-error standard
+deviation is fixed.
+
+The second calculation follows [cite:@pozdnyakovModelingAnimalMovements2014].
+It evaluates the joint Gaussian likelihood of consecutive increments with a
+tridiagonal covariance matrix, estimating both the Brownian and location-error
+standard deviations. The reference trajectory is the female mule-deer example
+used by Pozdnyakov et al.
+
+#+name: current_impl
+#+begin_src jupyter-python
+import numpy as np
+import pandas as pd
+from scipy.optimize import minimize_scalar
+
+def L_mod(gdf, sigma_m, delta_z):
+    result = 0
+    for i in range(0, len(gdf) - 2, 2):
+        start = gdf.iloc[i]
+        mid = gdf.iloc[i + 1]
+        end = gdf.iloc[i + 2]
+        T_i = (end["time.lag"] - start["time.lag"])
+        alpha = (mid["time.lag"] - start["time.lag"]) / T_i
+        mu_tx = start["x"] + alpha * (end["x"] - start["x"])
+        mu_ty = start["y"] + alpha * (end["y"] - start["y"])
+        sigma_t = (
+            T_i * alpha * (1 - alpha) * sigma_m**2
+            + ((1 - alpha) ** 2 + alpha ** 2) * delta_z ** 2
+        )
+        result += -np.log(2 * np.pi * sigma_t) - (
+            ((mid["x"] - mu_tx) ** 2 + (mid["y"] - mu_ty) ** 2)
+            / (2 * sigma_t)
+        )
+
+    return result
+
+def calculate_sigma_m(gdf, delta_z):
+    result = minimize_scalar(lambda sigma_m: -L_mod(gdf, sigma_m, delta_z))
+    sigma_m = result.x
+    return sigma_m
+
+delta_z = 20
+#+end_src
+
+#+RESULTS: current_impl
+
+
+
+Construct the tridiagonal increment covariance with
+=scipy.sparse.dia_matrix=. The dense array returned here is used by the
+Cholesky calculation below.
+
+#+begin_src jupyter-python
+from scipy.sparse import dia_matrix
+
+def get_sparse_sigma(time: np.ndarray, parameter: np.ndarray):
+    n = len(time)
+    tau = np.ediff1d(time)
+    d0 = tau * parameter[0]**2 + 2 * parameter[1]**2
+    d1 = np.ones(n-1) * -parameter[1]**2
+    offsets = np.array([-1, 0, 1])
+    data = np.array([d1, d0, d1])
+    sigma_diag = dia_matrix((data, offsets), shape=(n-1, n-1)).toarray()
+    return sigma_diag
+
+#+end_src
+
+#+RESULTS:
+
+Use the covariance matrix to evaluate a zero-mean multivariate-normal log
+density.
+
+#+name: multivariate_density
+#+begin_src jupyter-python
+import scipy.linalg
+
+def multivariate_density(x: np.ndarray, cov_mat):
+    n = cov_mat.shape[0]
+    c, lower = scipy.linalg.cho_factor(cov_mat)
+    p1 = - (n / 2) * np.log(2 * np.pi) - np.log(np.diag(c)).sum()
+    y = scipy.linalg.cho_solve((c, lower), x)
+    p2 = - (np.dot(x, y))/2
+    return p1 + p2
+#+end_src
+
+#+RESULTS: multivariate_density
+
+The joint negative log likelihood estimates the Brownian standard-deviation
+rate \(\sigma_m\) and the location-error standard deviation \(\delta_m\).
+
+#+name: loglikelihood
+#+begin_src jupyter-python
+from scipy.optimize import minimize
+
+def negative_loglikelihood(parameters: np.ndarray, df: pd.DataFrame):
+    zxi_s = np.ediff1d(df['x'])
+    sigma_x = get_sparse_sigma(df['time.lag'], parameters)
+    loglike_x = multivariate_density(zxi_s, sigma_x)
+
+    zyi_s = np.ediff1d(df['y'])
+    sigma_y = get_sparse_sigma(df['time.lag'], parameters)
+    loglike_y = multivariate_density(zyi_s, sigma_y)
+
+    likelihood = -(loglike_x + loglike_y)
+    return likelihood
+
+def calculate_parameters(df):
+    n = df.shape[0]
+    tau = np.ediff1d(df['time.lag'])
+    zxi_s = np.ediff1d(df['x'])
+    zyi_s = np.ediff1d(df['y'])
+    start_val = np.sqrt((zxi_s**2 + zyi_s**2).sum()/(2 * (2 + tau).sum()))
+    result = minimize(negative_loglikelihood, [start_val]*2, args=(df,))
+    return result.x
+
+#+end_src
+
+#+RESULTS: loglikelihood
+* Simulation study
+:PROPERTIES:
+:ID:       a8e526cc-ae06-456f-ba17-df554f1820b5
+:END:
+Synthetic trajectories compare both estimators under regular and irregular
+observation schedules.
+
+#+begin_src jupyter-python
+rng = np.random.default_rng(2025)
+def gen_data(time):
+    tau = np.ediff1d(time)
+    s = rng.uniform(low=40, high=60)
+    std_dev = np.sqrt(tau * s**2)
+
+    true_x = np.concatenate([[0], np.cumsum(rng.normal(0, std_dev))])
+    true_y = np.concatenate([[0], np.cumsum(rng.normal(0, std_dev))])
+
+    error_x = delta_z * rng.standard_normal(size=time.shape[0])
+    error_y = delta_z * rng.standard_normal(size=time.shape[0])
+
+    x = true_x + error_x
+    y = true_y + error_y
+    df = pd.DataFrame({'time.lag': time, 'x': x, 'y': y})
+    return df, s
+
+def generate_random_data(delta_z):
+    time = np.arange(0, 1000, 5)
+    indices = rng.choice(np.arange(1, len(time) - 1), size=int(0.3 * len(time)), replace=False)
+
+    df, s = gen_data(time)
+    df_2 = df.drop(index=indices).reset_index(drop=True)
+    return df, df_2, s, s
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+from tqdm import tqdm
+import time
+
+sigma_pozyd, sigma_horne, sigma_true, error_pozyd, error_horne = [], [], [], [], []
+nu_pozyd, nu_horne, nu_err_pozyd, nu_err_horne, nu_sigma_true = [], [], [], [], []
+deltas = []
+times = {'poz': [], 'horne': [], 'nu_poz': [], 'nu_horne': []}
+for _ in tqdm(range(1000)):
+    df, df_2, s, s_2 = generate_random_data(delta_z)
+    start = time.time()
+    sigma, dz = calculate_parameters(df)
+    end = time.time()
+    times['poz'].append(end - start)
+    start = time.time()
+    s_old = calculate_sigma_m(df, delta_z)
+    end = time.time()
+    times['horne'].append(end-start)
+
+    start = time.time()
+    nu_sig_pozyd, _ = calculate_parameters(df_2)
+    end = time.time()
+    times['nu_poz'].append(end-start)
+    start = time.time()
+    nu_sig_horne = calculate_sigma_m(df_2, delta_z)
+    end = time.time()
+    times['nu_horne'].append(end-start)
+
+    sigma_pozyd.append(sigma)
+    sigma_horne.append(s_old)
+    nu_pozyd.append(nu_sig_pozyd)
+    nu_horne.append(nu_sig_horne)
+    sigma_true.append(s)
+    nu_sigma_true.append(s_2)
+
+    deltas.append(dz)
+    err_p = abs(sigma - s)/s
+    err_h = abs(s_old - s)/s
+    nu_err_p = abs(nu_sig_pozyd - s_2)/s_2
+    nu_err_h = abs(nu_sig_horne - s_2)/s_2
+    error_pozyd.append(err_p)
+    error_horne.append(err_h)
+    nu_err_pozyd.append(nu_err_p)
+    nu_err_horne.append(nu_err_h)
+#+end_src
+
+#+RESULTS:
+:  38%|███▊      | 377/1000 [12:39<21:51,  2.11s/it] scipy.optimize: RuntimeWarning: divide by zero encountered in double_scalars
+:   rhok = 1.0 / (np.dot(yk, sk))
+:  97%|█████████▋| 968/1000 [32:17<01:06,  2.07s/it] scipy.optimize: RuntimeWarning: divide by zero encountered in double_scalars
+:   rhok = 1.0 / (np.dot(yk, sk))
+: 100%|██████████| 1000/1000 [33:22<00:00,  2.00s/it]
+
+#+begin_src jupyter-python
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(10, 10))
+ax.plot(error_pozyd[:100], 'ko--', markersize=4, linewidth=1, label="Pozdnyakov et al.")
+ax.plot(error_horne[:100], 'ro--', markersize=4, linewidth=1, label="Horne et al.")
+ax.grid()
+ax.legend()
+ax.set_ylabel("Relative error in Brownian standard-deviation rate")
+
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: Text(0, 0.5, 'Relative error in Brownian standard-deviation rate')
+[[file:./.ob-jupyter/18ead5d21adc2cc52eb854000568ca69bf593de9.png]]
+:END:
+
+
+Compare the full relative-error distributions.
+#+begin_src jupyter-python
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(10,10))
+ax.hist(
+    [error_pozyd, error_horne, nu_err_pozyd, nu_err_horne],
+    lw=1,
+    ec='white',
+    stacked=False,
+    label=["Regular — Pozdnyakov", "Regular — Horne", "Irregular — Pozdnyakov", "Irregular — Horne"],
+)
+ax.set_ylabel("Number of simulations")
+ax.set_xlabel("Relative error in standard deviation")
+ax.legend()
+ax.grid()
+
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/0fda0c58e8e4b5109347a42ba41ea9a35118abe5.png]]
+
+Scatter plots compare the two estimates for regular and irregular observation
+schedules.
+#+begin_src jupyter-python
+fig, ax = plt.subplots(figsize=(10, 10))
+ax.scatter(sigma_horne, sigma_pozyd, 3, 'k')
+ax.scatter(nu_horne, nu_pozyd, 3, 'r')
+ax.set_xlabel("Sigma values (Horne et al.)")
+ax.set_ylabel("Sigma values (Pozdnyakov et al.)")
+ax.grid()
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/22b3741817d0bce08dd3a0fd5a2af08b431a4aca.png]]
+
+Compare execution times in seconds.
+#+begin_src jupyter-python
+fig, ax = plt.subplots(figsize=(9, 9))
+ax.hist(times.values(), label=list(times.keys()))
+ax.grid()
+ax.legend()
+ax.set_title("Execution time for Brownian-parameter estimation")
+ax.set_xlabel("Time (s)")
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: Text(0.5, 0, 'time (s)')
+[[file:./.ob-jupyter/6d67f60f04a022745c560915d28fbdc69032aeb0.png]]
+:END:
+
+* Estimates from observed trajectories
+#+begin_src jupyter-python
+import json
+import numpy as np
+import os
+from pathlib import Path
+
+REPOSITORY_ROOT = Path("../..").resolve()
+DATA_ROOT = Path(os.environ.get("TIME_RESIDENCE_DATA_DIR", REPOSITORY_ROOT / "data"))
+with (DATA_ROOT / "sigma_m_First_First.json").open() as input_file:
+    sigma_vals = json.load(input_file)
+sigma_old, sigma_new = [[x[0] for x in sigma_vals.values()], [x[1] for x in sigma_vals.values()]]
+sigma_old, sigma_new = np.array(sigma_old), np.array(sigma_new)
+len(sigma_old), len(sigma_new)
+#+end_src
+
+#+RESULTS:
+| 107927 | 107927 |
+
+#+begin_src jupyter-python
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(10, 10))
+ax.scatter(sigma_old, sigma_new, 3, 'k')
+ax.set_xlabel("Sigma values (Horne et al.)")
+ax.set_ylabel("Sigma values (Pozdnyakov et al.)")
+ax.grid()
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/5ad8dd43aadff9e0b6552419cf11315613021212.png]]
+
+Fit an ordinary least-squares line to the paired estimates.
+
+#+begin_src jupyter-python
+coeff = np.polynomial.polynomial.polyfit(sigma_old, sigma_new, 1)
+coeff
+#+end_src
+
+#+RESULTS:
+: array([0.15803594, 0.84463853])
+
+#+begin_src jupyter-python
+x = np.linspace(0, 50, 100)
+y = coeff[1] * x + coeff[0]
+
+fig, ax = plt.subplots(figsize=(10,10))
+ax.scatter(sigma_old, sigma_new, 3, 'k')
+ax.plot(x, y, 'r')
+ax.set_xlabel("Sigma values (Horne et al.)")
+ax.set_ylabel("Sigma values (Pozdnyakov et al.)")
+ax.grid()
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/d00810be662e43b1364e8ebc8a6083b29f94a8af.png]]
+
+#+begin_src jupyter-python
+(sigma_old > sigma_new).sum()
+#+end_src
+
+#+RESULTS:
+: 959

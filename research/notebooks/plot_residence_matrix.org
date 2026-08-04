@@ -1,0 +1,98 @@
+#+TITLE: Residence-occupation matrix comparison
+#+author: Chahak Mehta
+#+property: header-args :session resmat :async yes :eval no-export
+
+This notebook compares residence-occupation matrices produced by two
+Brownian-parameter estimators.
+
+#+begin_src jupyter-python
+import numpy as np
+import matplotlib.pyplot as plt
+import json
+import os
+from pathlib import Path
+
+REPOSITORY_ROOT = Path("../..").resolve()
+DATA_ROOT = Path(os.environ.get("TIME_RESIDENCE_DATA_DIR", REPOSITORY_ROOT / "data"))
+OUTPUT_ROOT = Path(os.environ.get("TIME_RESIDENCE_OUTPUT_DIR", REPOSITORY_ROOT / "outputs"))
+OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+results = json.load(open(DATA_ROOT / 'new_sigma_m' / 'avg_res_mat_First_First.json', 'r'))
+results.keys()
+#+end_src
+
+#+RESULTS:
+: dict_keys(['full_residence_matrix', 'truncated_residence_matrix', 'agebs_to_remove'])
+
+#+begin_src jupyter-python
+res_mat = np.array(results['full_residence_matrix'])
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+fig, ax = plt.subplots(figsize=(14, 14))
+figure = ax.imshow(res_mat, cmap='Reds')
+fig.colorbar(figure, ax=ax)
+fig.savefig(OUTPUT_ROOT / 'matrix.png', dpi=500)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/c606ba7c29fe9c1fd8f14920ef25679613091077.png]]
+
+Load and display the matrix produced by the baseline estimator.
+
+#+begin_src jupyter-python
+old_results = json.load(open(DATA_ROOT / 'avg_residence_matrices' / 'avg_res_mat_First_First.json', 'r'))
+old_results.keys()
+#+end_src
+
+#+RESULTS:
+: dict_keys(['residence_matrix'])
+
+#+begin_src jupyter-python
+old_resmat = np.array(old_results['residence_matrix'])
+old_resmat.shape
+#+end_src
+
+#+RESULTS:
+| 582 | 582 |
+
+#+begin_src jupyter-python
+fig, ax = plt.subplots(figsize=(14, 14))
+figure = ax.imshow(old_resmat, cmap='Reds')
+fig.colorbar(figure, ax=ax)
+fig.savefig(OUTPUT_ROOT / 'old_res_matrix.png', dpi=500)
+#+end_src
+
+#+RESULTS:
+[[file:./.ob-jupyter/76d08973229bebd9d52ef589f0acc12ab0079434.png]]
+
+Verify that both calculations exclude the same AGEBs.
+
+#+begin_src jupyter-python
+np.all(np.array(results['agebs_to_remove']) == np.array(old_results['agebs_to_remove']))
+#+end_src
+
+#+RESULTS:
+: True
+
+Compare matrix dimensions and the destination column with the greatest total
+occupation weight.
+#+begin_src jupyter-python
+res_mat.shape
+#+end_src
+
+#+RESULTS:
+| 582 | 582 |
+
+#+begin_src jupyter-python
+res_mat.sum(axis=0).argmax(), old_resmat.sum(axis=0).argmax()
+#+end_src
+
+#+RESULTS:
+| 438 | 176 |

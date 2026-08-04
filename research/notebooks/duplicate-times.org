@@ -1,0 +1,133 @@
+#+title: Investigation of Duplicate Timestamps
+#+date: 2021:06:07
+#+property: header-args :session duplicate :exports both
+
+The source data contain records with the same device identifier and timestamp,
+sometimes at different locations. The following queries examine duplicate
+timestamps in records from <2020-01-01> through <2020-12-31>.
+
+* Total duplicate timestamps
+Duplicate records are counted within each device so that simultaneous records
+from different devices are not conflated. The query reports both collected and
+distinct timestamps for every device.
+
+#+begin_example sql
+SELECT 
+  count(id_adv) as total_ids,
+  sum(distinct_timestamps) as total_distinct_timestamps,
+  sum(collected_timestamps) as total_collected_timestamps,
+FROM
+  (SELECT
+    id_adv,
+    count(distinct(timestamp)) as distinct_timestamps,
+    count(timestamp) as collected_timestamps
+  FROM
+    `movilidadcovid.Movilidad.Hermosillo`
+  WHERE
+    DATE(timestamp) BETWEEN "2020-01-01"
+    AND "2020-12-31"
+  GROUP BY id_adv);
+#+end_example
+
+The difference between collected and distinct timestamps is *935,988*. This is
+the number of excess device-timestamp records in the selected date range.
+
+| Total IDs | Total Distinct Timestamps | Total Collected Timestamps |
+|    306963 |                  79646464 |                   80582452 |
+
+* Per-device duplicate timestamps
+The per-device counts show whether duplicate records are broadly distributed
+or concentrated among a smaller set of devices.
+
+#+begin_src sql
+SELECT
+    id_adv,
+    count(distinct(timestamp)) as distinct_timestamps,
+    count(timestamp) as collected_timestamps
+  FROM
+    `movilidadcovid.Movilidad.Hermosillo`
+  WHERE
+    DATE(timestamp) BETWEEN "2020-01-01"
+    AND "2020-12-31"
+  GROUP BY id_adv;
+#+end_src
+
+The query result is read from the access-controlled data directory.
+
+#+begin_src jupyter-python :results raw drawer
+import pandas as pd
+import os
+from pathlib import Path
+
+REPOSITORY_ROOT = Path("../..").resolve()
+DATA_ROOT = Path(os.environ.get("TIME_RESIDENCE_DATA_DIR", REPOSITORY_ROOT / "data"))
+df = pd.read_csv(DATA_ROOT / "private" / "id-wise-duplicate-timestamps.csv")
+df.shape
+#+end_src
+
+#+RESULTS:
+| 306963 | 4 |
+
+Of the /306,963/ devices, /267,157/ have no repeated timestamp. The remaining
+devices require an explicit duplicate-resolution rule before trajectory
+analysis.
+
+#+begin_src jupyter-python :results raw drawer
+df['duplicate_timestamps'].value_counts()
+#+end_src
+
+#+RESULTS:
+#+begin_example
+0      267157
+1       16228
+2        6447
+3        3520
+4        2184
+        ...  
+429         1
+549         1
+357         1
+320         1
+681         1
+Name: duplicate_timestamps, Length: 602, dtype: int64
+#+end_example
+
+The histogram summarizes the distribution of excess records per device.
+#+begin_src jupyter-python :results file drawer :file ./duplicate-distribution.png
+import matplotlib.pyplot as plt
+
+fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True, figsize=(7,7))
+fig.subplots_adjust(hspace=0.2)
+
+ax1.hist(df['duplicate_timestamps'], bins=1000)
+ax2.hist(df['duplicate_timestamps'], bins=1000)
+ax3.hist(df['duplicate_timestamps'], bins=1000)
+ax1.set_ylim(250000, 270000)
+ax2.set_ylim(1000, 25000)
+ax3.set_ylim(0, 1000)
+ax1.set_xlim(0, 200)
+
+ax1.spines['bottom'].set_visible(False)
+ax2.spines['top'].set_visible(False)
+ax2.spines['bottom'].set_visible(False)
+ax3.spines['top'].set_visible(False)
+ax1.xaxis.tick_top()
+ax1.tick_params(labeltop=False)
+ax3.xaxis.tick_bottom()
+
+d = 0.3
+kwargs = dict(marker=[(-1, -d), (1, d)], markersize=12,
+              linestyle="none", color="k", mec="k", mew=1, clip_on=False)
+ax1.plot([0, 1], [0, 0], transform=ax1.transAxes, **kwargs)
+ax2.plot([0, 0, 1, 1], [0, 1, 0, 1], transform=ax2.transAxes, **kwargs)
+ax3.plot([0, 1], [1, 1], transform=ax3.transAxes, **kwargs)
+ax3.set_xlabel("Number of duplicate points")
+ax2.set_ylabel("Number of individuals")
+plt.show()
+#+end_src
+
+#+RESULTS:
+[[file:./duplicate-distribution.png]]
+
+The distribution is strongly right-skewed: most affected devices have few
+duplicates, while a small number have substantially larger counts.
