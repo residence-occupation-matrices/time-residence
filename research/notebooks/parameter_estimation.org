@@ -1,0 +1,19 @@
+#+TITLE: Epidemic-model parameter notation
+
+The Figure 8 analysis uses the following correspondence between the article's
+notation and the variable names in =epidemic_simulation_code.py=.
+
+| Article symbol | Script variable | Definition |
+|----------------+-----------------+------------|
+| \(\beta\)       | =beta=          | contact/transmission rate |
+| \(\kappa\)      | =kappa=         | exposed-to-infected rate |
+| \(\gamma\)      | =gamma=         | recovery rate |
+| \(\Lambda_i\)   | =lamda=         | recruitment rate in AGEB \(i\) |
+| \(\mu\)         | =mu=            | natural mortality rate |
+| \(\psi\)        | =phi=           | disease-induced mortality rate |
+| \(\tau\)        | =tau=           | loss-of-immunity rate |
+| \(N_i\)         | =N_bar=         | resident population of AGEB \(i\) |
+
+The spelling =lamda= and the name =phi= are local conventions in the study
+script. The importable implementation under =src/time_residence/= uses =psi=
+for the disease-induced mortality parameter.

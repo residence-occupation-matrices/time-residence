@@ -1,0 +1,406 @@
+#+title: Calculate residence-time matrix using data from Hermosillo
+#+author: Chahak Mehta
+#+date: 2021:05:31
+#+property: header-args :session restime :tangle residence_time.py :exports both
+
+#+begin_quote
+This notebook omits device identifiers, device timestamps, and exact device
+coordinates. The corresponding cells require authorized access to the
+confidential mobility data described in the article.
+#+end_quote
+
+This notebook develops the device-level occupation calculation used to build a
+residence-occupation matrix for epidemic simulations. Consecutive mobile-phone
+observations are connected by Brownian bridges, and the resulting density is
+integrated over the AGEBs of Hermosillo.
+
+* Libraries
+The calculation uses [[https://geopandas.org/][GeoPandas]] for spatial data,
+NumPy and SciPy for numerical work, and Matplotlib for diagnostics. SciPy's
+optimization routines estimate the Brownian standard-deviation rate
+\(\sigma_m\).
+
+The recorded Emacs session used the repository's Pipenv environment:
+
+#+begin_src emacs-lisp :tangle no
+(pipenv-activate)
+#+end_src
+
+#+RESULTS:
+: t
+
+The remaining cells run in a Jupyter Python session.
+
+#+begin_src jupyter-python :results raw drawer
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import geopandas as gpd
+import os
+
+from tqdm import tqdm
+from datetime import datetime, date, time, timedelta
+from pathlib import Path
+
+REPOSITORY_ROOT = Path("../..").resolve()
+DATA_ROOT = Path(os.environ.get("TIME_RESIDENCE_DATA_DIR", REPOSITORY_ROOT / "data"))
+#+end_src
+
+#+RESULTS:
+
+* AGEB Data
+
+INEGI (Mexico's National Institute of Statistics and Geography) provides the
+AGEB boundaries. The geometry file is loaded from the configured data root.
+
+#+begin_src jupyter-python :results raw drawer
+data_ageb = gpd.read_file(DATA_ROOT / "geometry" / "26a.shp")
+#+end_src
+
+#+RESULTS:
+#+begin_example
+          CVEGEO CVE_ENT CVE_MUN CVE_LOC CVE_AGEB  \
+0  2603000010470      26     030    0001     0470   
+1  260300001750A      26     030    0001     750A   
+2  2603000010108      26     030    0001     0108   
+3  2603000018211      26     030    0001     8211   
+4  2603000018669      26     030    0001     8669   
+
+                                            geometry  
+0  POLYGON ((1627481.293 1926891.737, 1627485.262...  
+1  POLYGON ((1622934.581 1922134.505, 1622929.451...  
+2  POLYGON ((1626967.321 1927003.078, 1626806.546...  
+3  POLYGON ((1622094.880 1921215.016, 1622108.872...  
+4  POLYGON ((1624881.935 1914255.530, 1624877.914...  
+#+end_example
+
+The GeoDataFrame contains 582 Hermosillo polygons. This calculation uses the
+=CVE_AGEB= and =geometry= columns. The source geometry declares the
+=MEXICO_ITRF_2008_LCC= coordinate reference system (CRS); both polygons and
+device locations are transformed to Web Mercator before spatial operations.
+
+#+begin_src jupyter-python :results raw drawer
+data_ageb.crs
+#+end_src
+
+#+RESULTS:
+#+begin_example
+<Projected CRS: PROJCS["MEXICO_ITRF_2008_LCC",GEOGCS["ITRF2008",DA ...>
+Name: MEXICO_ITRF_2008_LCC
+Axis Info [cartesian]:
+- [east]: Easting (metre)
+- [north]: Northing (metre)
+Area of Use:
+- undefined
+Coordinate Operation:
+- name: unnamed
+- method: Lambert Conic Conformal (2SP)
+Datum: International Terrestrial Reference Frame 2008
+- Ellipsoid: GRS 1980
+- Prime Meridian: Greenwich
+#+end_example
+
+Transform the active geometry column to Web Mercator (=EPSG:3857=):
+
+#+begin_src jupyter-python :results raw drawer
+data_ageb.to_crs("EPSG:3857", inplace=True)
+data_ageb.plot(figsize=(6,6))
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: <AxesSubplot:>
+[[file:./.ob-jupyter/0729acc7926cf71f679f8ca70dd54b084e50c448.png]]
+:END:
+
+Confirm the transformed CRS.
+
+#+begin_src jupyter-python :results raw drawer
+data_ageb.crs
+#+end_src
+
+#+RESULTS:
+#+begin_example
+<Projected CRS: EPSG:3857>
+Name: WGS 84 / Pseudo-Mercator
+Axis Info [cartesian]:
+- X[east]: Easting (metre)
+- Y[north]: Northing (metre)
+Area of Use:
+- name: World between 85.06°S and 85.06°N.
+- bounds: (-180.0, -85.06, 180.0, 85.06)
+Coordinate Operation:
+- name: Popular Visualisation Pseudo-Mercator
+- method: Popular Visualisation Pseudo Mercator
+Datum: World Geodetic System 1984 ensemble
+- Ellipsoid: WGS 84
+- Prime Meridian: Greenwich
+#+end_example
+
+* GPS Data
+An authorized example trajectory illustrates residence assignment and
+occupation estimation. Duplicate timestamps are removed before the locations
+are ordered in time.
+
+#+begin_src jupyter-python :results raw drawer
+df_ind = pd.read_csv(DATA_ROOT / "private" / "example_device_pings.csv").drop_duplicates(subset="timestamp")
+#+end_src
+
+#+RESULTS:
+: Device-level output removed.
+
+The example contains one device, so its identifier column is not needed for
+the calculation.
+
+#+begin_src jupyter-python :results raw drawer
+df_ind.drop(columns="id_adv", inplace=True)
+#+end_src
+
+#+RESULTS:
+: Device-level output removed.
+
+Parse source timestamps as UTC.
+
+#+begin_src jupyter-python :results raw drawer
+df_ind["timestamp"] = pd.to_datetime(df_ind["timestamp"], utc=True)
+df_ind["timestamp"].head(3)
+#+end_src
+
+#+RESULTS:
+: Device-level output removed.
+
+Construct point geometries from WGS84 longitude and latitude.
+
+#+begin_src jupyter-python :results raw drawer
+gdf_ind = gpd.GeoDataFrame(df_ind, geometry=gpd.points_from_xy(df_ind["lon"], df_ind["lat"], crs="EPSG:4326")).sort_values(by="timestamp")
+#+end_src
+
+#+RESULTS:
+: Device-level output removed.
+
+Transform the device locations to the polygon CRS used in this calculation.
+
+#+begin_src jupyter-python :results raw drawer
+gdf_ind.to_crs("EPSG:3857", inplace=True)
+#+end_src
+
+#+RESULTS:
+: Device-level output removed.
+
+** Determine residence
+Assign each device location to its containing AGEB. Locations outside every
+polygon receive index −1.
+
+#+begin_src jupyter-python :results raw drawer
+def calculate_polygon(point, data_ageb):
+    for i, pol in enumerate(data_ageb["geometry"]):
+        if pol.contains(point):
+            return i
+    return -1    
+        
+gdf_ind["polygon"] = gdf_ind["geometry"].apply(calculate_polygon, args=(data_ageb,))
+
+#+end_src
+
+*** Complete-record mode
+The modal AGEB over all assigned locations provides the complete-record
+residence candidate.
+
+#+begin_src jupyter-python :results raw drawer
+count_df = gdf_ind["polygon"].value_counts()
+residence_polygon = count_df.index[0] if count_df.index[0] != -1 else count_df.index[1]
+print(residence_polygon)
+#+end_src
+
+#+RESULTS:
+: Device-level output removed.
+
+*** Nighttime mode
+The modal AGEB from observations between 22:00 and 06:00 provides the
+nighttime residence candidate.
+
+#+begin_src jupyter-python :results raw drawer
+local_timestamps = gdf_ind["timestamp"].dt.tz_convert("America/Hermosillo")
+count_df = gdf_ind.loc[(local_timestamps.dt.hour >= 22) | (local_timestamps.dt.hour < 6)]["polygon"].value_counts()
+residence_polygon = count_df.index[0] if count_df.index[0] != -1 else count_df.index[1]
+print(residence_polygon)
+#+end_src
+
+#+RESULTS:
+: Device-level output removed.
+
+** Estimate \(\sigma_m\)
+Estimate the Brownian standard-deviation rate for the trajectory by minimizing
+the negative log likelihood.
+
+#+begin_src jupyter-python :results raw drawer
+def L_mod(gdf_ind, sigma_m, delta_z):
+    result = 0
+    for i in range(0, len(gdf_ind)-2, 2):
+        start_point = gdf_ind.iloc[i]
+        mid_point = gdf_ind.iloc[i+1]
+        end_point = gdf_ind.iloc[i+2]
+        T_i = (end_point["timestamp"] - start_point["timestamp"]).total_seconds()
+        alpha = (mid_point["timestamp"] - start_point["timestamp"]).total_seconds()/T_i
+        mu_tx = start_point["geometry"].x + alpha*(end_point["geometry"].x - start_point["geometry"].x)
+        mu_ty = start_point["geometry"].y + alpha*(end_point["geometry"].y - start_point["geometry"].y)
+        sigma_t = np.sqrt(T_i * alpha * (1 - alpha) * sigma_m**2
+                          + ((1 - alpha)**2 + alpha**2) * delta_z**2)
+        result += 2 * np.log(sigma_t) + (((mid_point["geometry"].x - mu_tx)**2 + (mid_point["geometry"].y - mu_ty)**2)/(2 * sigma_t**2))
+
+    return result
+#+end_src
+
+#+RESULTS:
+
+Minimize =L_mod= with respect to =sigma_m=.
+
+#+begin_src jupyter-python :results raw drawer
+from scipy.optimize import minimize_scalar
+
+def calculate_sigma_m(gdf_ind, delta_z):
+    res = minimize_scalar(lambda sigma_m: L_mod(gdf_ind, sigma_m, delta_z))
+    sigma_m = res.x
+    return sigma_m
+#+end_src
+
+#+RESULTS:
+: Device-level output removed.
+
+** Calculate \(h_z\)
+Evaluate \(h_z\) at sampled locations using Monte Carlo integration.
+
+#+name: gaussian_pdf
+#+caption: Evaluate a Gaussian density with mean mu and standard deviation sigma.
+#+begin_src jupyter-python :results raw drawer
+def norm_pdf(x, mu, sigma):
+    mu, sigma = mu.reshape(-1, 1), sigma.reshape(-1, 1)
+    x = x.reshape(-1, 1)
+    variance = sigma**2
+    numerator = x - mu
+    denominator = 2 * variance
+    pdf = ((1/(np.sqrt(2 * np.pi) * sigma)) * np.exp(-(numerator**2) / denominator))
+    return pdf
+#+end_src
+
+#+RESULTS: gaussian_pdf
+
+#+name: h_z
+#+begin_src jupyter-python :results raw drawer
+rng = np.random.default_rng(2025)
+def h_z(a, b, T_i, x, y, sigma_m2, delta_a, delta_b, indicator, n_time_samples=1000):
+    mc_sum = np.zeros(x.shape)
+    t = rng.uniform(0, T_i, size=n_time_samples)
+    alpha = t/T_i
+    mu_x = a.x + alpha * (b.x - a.x)
+    mu_y = a.y + alpha * (b.y - a.y)
+    sigma = np.sqrt(t * (1 - alpha) * sigma_m2
+                    + (1 - alpha)**2 * (delta_a**2)
+                    + (alpha**2) * (delta_b**2))
+    pdf_x = norm_pdf(x, mu_x, sigma)
+    pdf_y = norm_pdf(y, mu_y, sigma)
+    mc_sum += indicator * pdf_x * pdf_y
+
+    return mc_sum
+#+end_src
+
+#+RESULTS: h_z
+
+Integrate =h_z= over one AGEB to estimate its occupation probability.
+
+#+name: prob_region
+#+begin_src jupyter-python :results raw drawer
+def prob_region(data, cve_ageb, gdf_ind, sigma_m, delta_z, M):
+    N = len(gdf_ind)
+    polygon = data.loc[data["CVE_AGEB"] == cve_ageb, "geometry"]
+    limits = polygon.bounds.iloc[0]
+    rx = rng.uniform(limits["minx"], limits["maxx"], M).reshape(-1, 1)
+    ry = rng.uniform(limits["miny"], limits["maxy"], M).reshape(-1, 1)
+    points = gpd.GeoSeries(gpd.points_from_xy(rx, ry, crs="EPSG:3857"))
+    indicator = points.within(polygon.iloc[0]).to_numpy().reshape(-1, 1)
+    T_total = (gdf_ind["timestamp"].max() - gdf_ind["timestamp"].min()).total_seconds()
+    tot = 0
+    for i in range(N-1):
+        start_point = gdf_ind.iloc[i]
+        end_point = gdf_ind.iloc[i+1]
+        T_i = (end_point["timestamp"] - start_point["timestamp"]).total_seconds()
+        a, b = start_point["geometry"], end_point["geometry"]
+        prob = h_z(a, b, T_i, rx, ry, sigma_m**2, delta_z, delta_z, indicator, n_time_samples=M)
+        accum = prob.sum()
+        tot += (limits["maxx"] - limits["minx"]) * (limits["maxy"] - limits["miny"]) * accum * (T_i/M)
+
+    return tot/T_total
+#+end_src
+
+#+RESULTS: prob_region
+
+Profiling identifies repeated =.iloc= access in =prob_region= as a bottleneck.
+The alternative below precomputes consecutive points, timestamps, and interval
+durations before evaluating each AGEB.
+
+#+begin_src jupyter-python :results raw drawer
+gdf_ind["next_point"] = gdf_ind["geometry"].shift(-1)
+gdf_ind["next_time"] = gdf_ind["timestamp"].shift(-1)
+#+end_src
+
+#+RESULTS:
+#+begin_src jupyter-python :results raw drawer
+def prob_region_new(data, cve_ageb, gdf_ind, sigma_m, delta_z, M):
+    N = len(gdf_ind)
+    polygon = data.loc[data["CVE_AGEB"] == cve_ageb, "geometry"]
+    limits = polygon.bounds.iloc[0]
+    rx = rng.uniform(limits["minx"], limits["maxx"], M).reshape(-1, 1)
+    ry = rng.uniform(limits["miny"], limits["maxy"], M).reshape(-1, 1)
+    points = gpd.GeoSeries(gpd.points_from_xy(rx, ry, crs="EPSG:3857"))
+    indicator = points.within(polygon.iloc[0]).to_numpy().reshape(-1, 1)
+    T_total = (gdf_ind["timestamp"].max() - gdf_ind["timestamp"].min()).total_seconds()
+    tot = 0
+    accum_values = []
+    gdf_ind["T_i"] = (gdf_ind["next_time"] - gdf_ind["timestamp"]).dt.total_seconds()
+    gdf_ind["hz"] = gdf_ind.apply(lambda row: h_z(row["geometry"], row["next_point"],
+                                                  row["T_i"], rx, ry, sigma_m**2,
+                                                  delta_z, delta_z, indicator,
+                                                  n_time_samples=M).sum() if pd.notna(row["T_i"]) else 0, axis=1)
+    gdf_ind["accum"] = gdf_ind.apply(lambda row: (limits["maxx"] - limits["minx"]) * (limits["maxy"] - limits["miny"]) * row["hz"] * (row["T_i"]/M), axis=1)
+                                               
+    res = gdf_ind["accum"].sum()/T_total
+    del gdf_ind["T_i"]
+    del gdf_ind["hz"]
+    del gdf_ind["accum"]
+    return res
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python :results raw drawer
+delta_z = 28.85
+print("Calculating sigma_m")
+sigma_m = calculate_sigma_m(gdf_ind, delta_z)
+print(sigma_m)
+d = prob_region_new(data_ageb, data_ageb["CVE_AGEB"].unique()[residence_polygon], gdf_ind, sigma_m, delta_z, 1000)
+print(d)
+#+end_src
+
+#+RESULTS:
+: Device-level output removed.
+
+
+Calculate the occupation probability for every AGEB.
+#+begin_src jupyter-python :results raw drawer
+prob_dist = np.zeros(len(data_ageb))
+for i, ageb in tqdm(enumerate(data_ageb['CVE_AGEB'].unique())):
+    prob_dist[i] = prob_region_new(data_ageb, ageb, gdf_ind, sigma_m, delta_z, 1000)
+#+end_src
+
+
+#+begin_src jupyter-python :results raw drawer
+fig, ax = plt.subplots()
+ax.plot(range(len(prob_dist)), prob_dist, linewidth=1)
+plt.show()
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+| <matplotlib.lines.Line2D | at | 0x7fa6272a5460> |
+[[file:./.ob-jupyter/f247dd2eb7a1f6a40e8f20b01da5d5bf5defe1cd.png]]
+:END:

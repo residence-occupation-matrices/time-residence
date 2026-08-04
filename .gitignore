@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environments and local configuration
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Editors and notebooks
+.idea/
+.vscode/
+.ipynb_checkpoints/
+.ob-jupyter/
+
+# Logs and generated artifacts
+*.log
+/outputs/**
+!/outputs/README.md
+
+# Research data are not versioned in this repository
+/data/**
+!/data/README.md
+
+# Platform files
+.DS_Store
+Thumbs.db
