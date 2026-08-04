@@ -8,12 +8,19 @@ We have the residence matrix calculated. We will try to visualize this matrix to
 import numpy as np
 import matplotlib.pyplot as plt
 import json
+import os
+from pathlib import Path
+
+REPOSITORY_ROOT = Path("../..").resolve()
+DATA_ROOT = Path(os.environ.get("TIME_RESIDENCE_DATA_DIR", REPOSITORY_ROOT / "data"))
+OUTPUT_ROOT = Path(os.environ.get("TIME_RESIDENCE_OUTPUT_DIR", REPOSITORY_ROOT / "outputs"))
+OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 #+end_src
 
 #+RESULTS:
 
 #+begin_src jupyter-python
-results = json.load(open('/Users/cmehta/data/contex/new_sigma_m/avg_res_mat_First_First.json', 'r'))
+results = json.load(open(DATA_ROOT / 'new_sigma_m' / 'avg_res_mat_First_First.json', 'r'))
 results.keys()
 #+end_src
 
@@ -30,7 +37,7 @@ res_mat = np.array(results['full_residence_matrix'])
 fig, ax = plt.subplots(figsize=(14, 14))
 figure = ax.imshow(res_mat, cmap='Reds')
 fig.colorbar(figure, ax=ax)
-fig.savefig('/Users/cmehta/data/contex/new_sigma_m/matrix.png', dpi=500)
+fig.savefig(OUTPUT_ROOT / 'matrix.png', dpi=500)
 #+end_src
 
 #+RESULTS:
@@ -39,7 +46,7 @@ fig.savefig('/Users/cmehta/data/contex/new_sigma_m/matrix.png', dpi=500)
 The residence matrix with the older method.
 
 #+begin_src jupyter-python
-old_results = json.load(open('/Users/cmehta/data/contex/avg_residence_matrices/avg_res_mat_First_First.json', 'r'))
+old_results = json.load(open(DATA_ROOT / 'avg_residence_matrices' / 'avg_res_mat_First_First.json', 'r'))
 old_results.keys()
 #+end_src
 
@@ -58,7 +65,7 @@ old_resmat.shape
 fig, ax = plt.subplots(figsize=(14, 14))
 figure = ax.imshow(old_resmat, cmap='Reds')
 fig.colorbar(figure, ax=ax)
-fig.savefig('/Users/cmehta/data/contex/old_res_matrix.png', dpi=500)
+fig.savefig(OUTPUT_ROOT / 'old_res_matrix.png', dpi=500)
 #+end_src
 
 #+RESULTS:

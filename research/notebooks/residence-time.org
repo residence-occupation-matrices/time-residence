@@ -3,6 +3,13 @@
 #+date: 2021:05:31
 #+property: header-args :session restime :tangle residence_time.py :exports both
 
+#+begin_quote
+Privacy note: outputs containing device identifiers, timestamps, or exact
+device coordinates have been removed. The corresponding cells require the
+confidential mobility data described in the article and must only be executed
+in an authorized environment.
+#+end_quote
+
 We need to calculate the residence-time matrix to be used for simulating an epidemic that allows movement between patches. To do that, we have mobile GPS data for ~30k individuals, that we will be using to form a distribution for time spent in each patch (AGEB) of Hermosillo. We will be using python to perform this calculation. The idea is inspired from using Brownian Bridge Movement Models to model the movement of animals in nature.
 
 * Libraries
@@ -118,25 +125,15 @@ Datum: World Geodetic System 1984 ensemble
 #+end_example
 
 * GPS Data
-We have the GPS data for many individuals spread over time. We can use this to provide a proportional value to each AGEB based on the frequency of visits. 655 datapoints of an individual are explored further in this document.
+We have the GPS data for many individuals spread over time. We can use this to provide a proportional value to each AGEB based on the frequency of visits. One authorized example trajectory is explored further in this document.
 
 #+begin_src jupyter-python :results raw drawer
-# df_ind = pd.read_csv("./bbmm-drive/individuo.csv")
-# df_ind = pd.read_csv("./bbmm-drive/data-1-655-pins.csv")
-df_ind = pd.read_csv("./bbmm-drive/data-1-7861-pins.csv").drop_duplicates(subset="timestamp")
+df_ind = pd.read_csv("../../data/private/example_device_pings.csv").drop_duplicates(subset="timestamp")
 # print(df_ind.head(3))
 #+end_src
 
 #+RESULTS:
-:                                               id_adv         timestamp  \
-: 0  ad5546fbffa75a04f796229a785d971e931e97f6a8c97a...  2020-09-18 10:31   
-: 1  ad5546fbffa75a04f796229a785d971e931e97f6a8c97a...  2020-09-20 03:26   
-: 2  ad5546fbffa75a04f796229a785d971e931e97f6a8c97a...  2020-09-20 07:45   
-: 
-:          lat         lon  
-: 0  29.085005 -111.034430  
-: 1  29.095562 -111.016603  
-: 2  29.084878 -111.057249  
+: Device-level output removed.
 
 Since all the datapoints belong to a single individual, we can drop the =id_adv= column since it is redundant.
 
@@ -146,10 +143,7 @@ df_ind.drop(columns="id_adv", inplace=True)
 #+end_src
 
 #+RESULTS:
-:           timestamp        lat         lon
-: 0  2020-09-18 10:31  29.085005 -111.034430
-: 1  2020-09-20 03:26  29.095562 -111.016603
-: 2  2020-09-20 07:45  29.084878 -111.057249
+: Device-level output removed.
 
 Since we have date and time information in the /timestamp/ column, we can change the datatype of that column to =datetime= to make time operations easier. This can be done using the =to_datetime= function of pandas.
 
@@ -159,10 +153,7 @@ df_ind["timestamp"].head(3)
 #+end_src
 
 #+RESULTS:
-: 0   2020-09-18 10:31:00+00:00
-: 1   2020-09-20 03:26:00+00:00
-: 2   2020-09-20 07:45:00+00:00
-: Name: timestamp, dtype: datetime64[ns, UTC]
+: Device-level output removed.
 
 We will now create a Geodataframe from this data so that we can use the lat/long information of each of the points as spatial geometry.
 
@@ -172,15 +163,7 @@ gdf_ind = gpd.GeoDataFrame(df_ind, geometry=gpd.points_from_xy(df_ind["lon"], df
 #+end_src
 
 #+RESULTS:
-:                   timestamp        lat         lon  \
-: 0 2020-09-18 10:31:00+00:00  29.085005 -111.034430   
-: 1 2020-09-20 03:26:00+00:00  29.095562 -111.016603   
-: 2 2020-09-20 07:45:00+00:00  29.084878 -111.057249   
-: 
-:                       geometry  
-: 0  POINT (-111.03443 29.08500)  
-: 1  POINT (-111.01660 29.09556)  
-: 2  POINT (-111.05725 29.08488)  
+: Device-level output removed.
 
 Since the GPS data is in a different CRS, we move it to Pseudo-Mercator too.
 
@@ -190,15 +173,7 @@ gdf_ind.to_crs("EPSG:3857", inplace=True)
 #+end_src
 
 #+RESULTS:
-:                   timestamp        lat         lon  \
-: 0 2020-09-18 10:31:00+00:00  29.085005 -111.034430   
-: 1 2020-09-20 03:26:00+00:00  29.095562 -111.016603   
-: 2 2020-09-20 07:45:00+00:00  29.084878 -111.057249   
-: 
-:                             geometry  
-: 0  POINT (-12360296.208 3386469.722)  
-: 1  POINT (-12358311.760 3387814.624)  
-: 2  POINT (-12362836.419 3386453.548)  
+: Device-level output removed.
 
 ** Determine Residence
 Now that we have both, the AGEBs and the GPS data in the same CRS, we can determine which AGEB does each GPS datapin belongs to. 
@@ -226,15 +201,7 @@ for chunk in df:
 #+end_src
 
 #+RESULTS:
-:                   timestamp        lat         lon  \
-: 0 2020-09-18 10:31:00+00:00  29.085005 -111.034430   
-: 1 2020-09-20 03:26:00+00:00  29.095562 -111.016603   
-: 2 2020-09-20 07:45:00+00:00  29.084878 -111.057249   
-: 
-:                             geometry  polygon  
-: 0  POINT (-12360296.208 3386469.722)      229  
-: 1  POINT (-12358311.760 3387814.624)      494  
-: 2  POINT (-12362836.419 3386453.548)      516  
+: Device-level output removed.
 
 *** Number of total occurrences
 One way to determine the residence polygon of the individual is to find the AGEB with the highest number of GPS datapoints in it. We can do this using the =value_counts= function.
@@ -243,25 +210,23 @@ One way to determine the residence polygon of the individual is to find the AGEB
 count_df = gdf_ind["polygon"].value_counts()
 residence_polygon = count_df.index[0] if count_df.index[0] != -1 else count_df.index[1]
 print(residence_polygon)
-
-gdf_ind.loc[gdf_ind["id_adv"]==some_id]["polygon"].value_counts()
 #+end_src
 
 #+RESULTS:
-: 229
+: Device-level output removed.
 
 *** Number of occurrences between 10pm and 6am
 Considering that most individuals are at home during this time, we can also determine the residence polygon as the polygon with the most datapoints in this timeframe.
 
 #+begin_src jupyter-python :results raw drawer
 gdf_timestamp_mst = gdf_ind["timestamp"].apply(lambda t: pd.Timestamp.astimezone(t, "MST"))
-count_df = gdf_ind.loc[(gdf_timestamp_mst.dt.hour >= 6) & (gdf_timestamp_mst.dt.hour <= 22)]["polygon"].value_counts()
+count_df = gdf_ind.loc[(gdf_timestamp_mst.dt.hour >= 22) | (gdf_timestamp_mst.dt.hour < 6)]["polygon"].value_counts()
 residence_polygon = count_df.index[0] if count_df.index[0] != -1 else count_df.index[1]
 print(residence_polygon)
 #+end_src
 
 #+RESULTS:
-: 229
+: Device-level output removed.
 
 ** TODO Determining \(\sigma_m\)
 \(\sigma_m\) is a parameter that we need to estimate for each individual by using the GPS data. We can do this by optimizing on a loglikelihood function.
@@ -298,7 +263,7 @@ def calculate_sigma_m(gdf_ind, delta_z):
 #+end_src
 
 #+RESULTS:
-: 14.67242135271698
+: Device-level output removed.
 
 ** Calculate \(h_z\)
 Now that we have the basics in place, we can calculate the values of \(h_z\) for various points throught Hermosillo using Monte Carlo Integration.
@@ -362,7 +327,7 @@ def prob_region(data, cve_ageb, gdf_ind, sigma_m, delta_z, M):
         accum = prob.sum()
         tot += (limits["maxx"] - limits["minx"]) * (limits["maxy"] - limits["miny"]) * accum * (T_i/M)
 
-    return tot/T_total, accum_values
+    return tot/T_total
 #+end_src
 
 #+RESULTS: prob_region
@@ -404,17 +369,16 @@ def prob_region_new(data, cve_ageb, gdf_ind, sigma_m, delta_z, M):
 #+RESULTS:
 
 #+begin_src jupyter-python :results raw drawer
-delta_z = np.sqrt(28.85)
+delta_z = 28.85
 print("Calculating sigma_m")
-# sigma_m = calculate_sigma_m(gdf_ind, delta_z)
-sigma_m = 73.78817684857587
+sigma_m = calculate_sigma_m(gdf_ind, delta_z)
 print(sigma_m)
 d = prob_region_new(data_ageb, data_ageb["CVE_AGEB"].unique()[residence_polygon], gdf_ind, sigma_m, delta_z, 1000)
 print(d)
 #+end_src
 
 #+RESULTS:
-: 0.088688117243922
+: Device-level output removed.
 
 
 Calcualte the probability for each AGEB.
@@ -436,43 +400,3 @@ plt.show()
 | <matplotlib.lines.Line2D | at | 0x7fa6272a5460> |
 [[file:./.ob-jupyter/f247dd2eb7a1f6a40e8f20b01da5d5bf5defe1cd.png]]
 :END:
-
-* Code playground
-:PROPERTIES:
-:header-args: :tangle no :session restime
-:END:
-
-#+begin_src jupyter-python :results raw drawer
-df = pd.read_csv("./bbmm-drive/data-1-7861-pins.csv")
-#+end_src
-
-#+RESULTS:
-
-#+begin_src jupyter-python :results raw drawer
-print(df.head(), df.shape)
-#+end_src
-
-#+RESULTS:
-#+begin_example
-                                              id_adv                timestamp  \
-0  c2e6243fff0990c395740ca969a8714461b3ae9beb300e...  2020-11-04 14:02:54 UTC   
-1  c2e6243fff0990c395740ca969a8714461b3ae9beb300e...  2020-10-22 17:46:47 UTC   
-2  c2e6243fff0990c395740ca969a8714461b3ae9beb300e...  2020-11-04 16:23:09 UTC   
-3  c2e6243fff0990c395740ca969a8714461b3ae9beb300e...  2020-11-04 07:00:21 UTC   
-4  c2e6243fff0990c395740ca969a8714461b3ae9beb300e...  2020-11-04 07:25:29 UTC   
-
-         lat         lon  
-0  29.073470 -110.938859  
-1  28.985100 -110.968510  
-2  29.063427 -110.961682  
-3  29.080793 -110.962457  
-4  29.093529 -110.992839   (7861, 4)
-#+end_example
-
-#+begin_src jupyter-python :results raw drawer
-temp = df.drop_duplicates(subset="timestamp")
-print(temp.shape)
-#+end_src
-
-#+RESULTS:
-: (7660, 4)

@@ -1,14 +1,13 @@
-import os
-import json
-import random
 import itertools
+import json
+
 import numpy as np
 import pandas as pd
-
+from project_paths import DATA_ROOT, prepare_output
 from tqdm import tqdm
 
 tqdm.pandas()
-from collections import Counter
+
 
 # rng = np.random.default_rng()
 def choice_func(row, population):
@@ -19,7 +18,6 @@ def choice_func(row, population):
     elif len(common) == 1:
         return common.pop()
     else:
-        # import pdb;pdb.set_trace()
         prob = np.array([population.get(str(ageb), 0) for ageb in common])
         if prob.sum() == 0:
             return -1
@@ -32,30 +30,38 @@ for period, part in tqdm(itertools.product(["First", "Second", "Third"], ["First
     if CREATE_DATA:
         for crit in [1, 2]:
             df = pd.read_csv(
-                f"/workspace/CHAHAK/bbmm/final-time-periods/criterion_{crit}/{period}Period_{part}Part_final.csv",
+                DATA_ROOT
+                / "final-time-periods"
+                / f"criterion_{crit}"
+                / f"{period}Period_{part}Part_final.csv",
                 sep=";",
             )
             df_grouped = df.groupby("id")
             temp = {}
             for idx, group in tqdm(df_grouped, leave=False):
-                # import pdb;pdb.set_trace()
                 temp[idx] = group["polygon"].mode().tolist()
 
             json.dump(
                 temp,
                 open(
-                    f"/workspace/CHAHAK/bbmm/final-residence-agebs/criterion_{crit}/{period}Period_{part}Part_agebs.json",
+                    prepare_output(
+                        DATA_ROOT
+                        / "final-residence-agebs"
+                        / f"criterion_{crit}"
+                        / f"{period}Period_{part}Part_agebs.json"
+                    ),
                     "w",
                 ),
                 indent=4,
             )
 
-    # import pdb; pdb.set_trace()
     df_crit1 = pd.DataFrame(
         pd.read_json(
             open(
-                f"/workspace/CHAHAK/bbmm/final-residence-agebs/criterion_1/{period}Period_{part}Part_agebs.json",
-                "r",
+                DATA_ROOT
+                / "final-residence-agebs"
+                / "criterion_1"
+                / f"{period}Period_{part}Part_agebs.json",
             ),
             orient="index",
             typ="series",
@@ -65,8 +71,10 @@ for period, part in tqdm(itertools.product(["First", "Second", "Third"], ["First
     df_crit2 = pd.DataFrame(
         pd.read_json(
             open(
-                f"/workspace/CHAHAK/bbmm/final-residence-agebs/criterion_2/{period}Period_{part}Part_agebs.json",
-                "r",
+                DATA_ROOT
+                / "final-residence-agebs"
+                / "criterion_2"
+                / f"{period}Period_{part}Part_agebs.json",
             ),
             orient="index",
             typ="series",
@@ -74,11 +82,13 @@ for period, part in tqdm(itertools.product(["First", "Second", "Third"], ["First
         columns=["ageb"],
     )
 
-    population_dict = json.load(open("/workspace/CHAHAK/bbmm/ageb-population-mapping.json", "r"))
+    population_dict = json.load(open(DATA_ROOT / "ageb-population-mapping.json"))
     joined = df_crit2.join(df_crit1, lsuffix="_crit2", rsuffix="_crit1")
     joined["loose"] = joined.progress_apply(choice_func, axis=1, args=(population_dict,))
 
     joined.to_csv(
-        f"/workspace/CHAHAK/bbmm/final-residence-agebs/combined/{period}Period_{part}Part_comb.csv",
+        prepare_output(
+            DATA_ROOT / "final-residence-agebs" / "combined" / f"{period}Period_{part}Part_comb.csv"
+        ),
         sep=";",
     )

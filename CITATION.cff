@@ -1,0 +1,48 @@
+cff-version: 1.2.0
+message: >-
+  If you use this software, cite the associated article and this repository.
+title: Residence-occupation matrices for Hermosillo, Sonora, Mexico
+type: software
+version: 1.0.0
+license: MIT
+repository-code: https://github.com/residence-occupation-matrices/time-residence
+doi: 10.5281/zenodo.11390633
+authors:
+  - family-names: Ramírez-Ramírez
+    given-names: L. Leticia
+  - family-names: Montoya
+    given-names: José A.
+  - family-names: Espinoza
+    given-names: Jesús F.
+  - family-names: Mehta
+    given-names: Chahak
+  - family-names: Akuno
+    given-names: Albert Orwa
+    orcid: https://orcid.org/0000-0003-0219-2336
+  - family-names: Bui-Thanh
+    given-names: Tan
+preferred-citation:
+  type: article
+  title: >-
+    Use of mobile phone sensing data to estimate residence and occupation times
+    in urban patches: human mobility restrictions and the 2020 COVID-19 outbreak
+    in Hermosillo, Mexico
+  journal: Computational Urban Science
+  year: 2025
+  volume: 5
+  issue: 1
+  doi: 10.1007/s43762-025-00168-y
+  authors:
+    - family-names: Ramírez-Ramírez
+      given-names: L. Leticia
+    - family-names: Montoya
+      given-names: José A.
+    - family-names: Espinoza
+      given-names: Jesús F.
+    - family-names: Mehta
+      given-names: Chahak
+    - family-names: Akuno
+      given-names: Albert Orwa
+      orcid: https://orcid.org/0000-0003-0219-2336
+    - family-names: Bui-Thanh
+      given-names: Tan

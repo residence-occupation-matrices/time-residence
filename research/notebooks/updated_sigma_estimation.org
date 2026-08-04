@@ -1,6 +1,6 @@
 #+TITLE: Updated Sigma Estimation
-#+property: header-args :session /ssh:pho-sach:/oden/cmehta/.local/share/jupyter/runtime/kernel-8aa33c87-5f5b-4408-b190-dd8ee6511ada.json :exports both :eval no-export :async yes
-#+bibliography: ~/Documents/contex/Contex.bib
+#+property: header-args :session sigma-estimation :exports both :eval no-export :async yes
+#+bibliography: references.bib
 #+latex_header: \usepackage[margin=0.5in]{geometry}
 
 * Basic idea
@@ -208,9 +208,9 @@ for i in tqdm(range(1000)):
 #+end_src
 
 #+RESULTS:
-:  38%|███▊      | 377/1000 [12:39<21:51,  2.11s/it]/oden/cmehta/.local/share/virtualenvs/residence-time-AyMSH4YV/lib/python3.6/site-packages/scipy/optimize/optimize.py:1166: RuntimeWarning: divide by zero encountered in double_scalars
+:  38%|███▊      | 377/1000 [12:39<21:51,  2.11s/it] scipy.optimize: RuntimeWarning: divide by zero encountered in double_scalars
 :   rhok = 1.0 / (np.dot(yk, sk))
-:  97%|█████████▋| 968/1000 [32:17<01:06,  2.07s/it]/oden/cmehta/.local/share/virtualenvs/residence-time-AyMSH4YV/lib/python3.6/site-packages/scipy/optimize/optimize.py:1166: RuntimeWarning: divide by zero encountered in double_scalars
+:  97%|█████████▋| 968/1000 [32:17<01:06,  2.07s/it] scipy.optimize: RuntimeWarning: divide by zero encountered in double_scalars
 :   rhok = 1.0 / (np.dot(yk, sk))
 : 100%|██████████| 1000/1000 [33:22<00:00,  2.00s/it]
 

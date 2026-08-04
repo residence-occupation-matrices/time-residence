@@ -1,18 +1,15 @@
-import time
-import numpy as np
 import matplotlib.pyplot as plt
-from scipy import stats
+import numpy as np
 from matplotlib import cm
 from tqdm import tqdm
-from sys import getsizeof
 
 
 def norm_pdf(x, mu, sigma):
     mu, sigma = mu.reshape(-1, 1), sigma.reshape(-1, 1)
-    variance = sigma ** 2
+    variance = sigma**2
     numerator = np.broadcast_to(x, (mu.shape[0], x.shape[0])) - mu
     denomenator = 2 * variance
-    pdf = (1 / (np.sqrt(2 * np.pi) * sigma)) * np.exp(-(numerator ** 2) / denomenator)
+    pdf = (1 / (np.sqrt(2 * np.pi) * sigma)) * np.exp(-(numerator**2) / denomenator)
     return pdf
 
 
@@ -43,13 +40,8 @@ for i in range(len(coords) - 1):
         mu_x = a[0] + alpha * (b[0] - a[0])
         mu_y = a[1] + alpha * (b[1] - a[1])
         sigma2 = (
-            t * (1 - alpha) * sigma_m2
-            + (1 - alpha ** 2) * (delta_a ** 2)
-            + (alpha ** 2) * (delta_b ** 2)
+            t * (1 - alpha) * sigma_m2 + (1 - alpha**2) * (delta_a**2) + (alpha**2) * (delta_b**2)
         )
-
-        # for j in tqdm(range(len(t)), leave=False):
-        #     mc_sum += stats.norm.pdf(X, mu_x[j], np.sqrt(sigma2[j]))*stats.norm.pdf(Y, mu_y[j], np.sqrt(sigma2[j]))
 
         pdf_x = norm_pdf(x, mu_x, np.sqrt(sigma2))
         pdf_y = norm_pdf(y, mu_y, np.sqrt(sigma2))

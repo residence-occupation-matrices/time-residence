@@ -1,9 +1,10 @@
-import json
 import argparse
+import json
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-
+from project_paths import DATA_ROOT, OUTPUT_ROOT, prepare_output
 from tqdm import tqdm
 
 tqdm.pandas()
@@ -23,13 +24,12 @@ PART = args.part
 
 matrices_dict = json.load(
     open(
-        f"/workspace/CHAHAK/bbmm/final_residence_matrices/final_residence_matrices_{PERIOD}_{PART}.json",
-        "r",
+        DATA_ROOT / "final_residence_matrices" / f"final_residence_matrices_{PERIOD}_{PART}.json",
     )
 )
 
 df_ids = pd.read_csv(
-    f"/workspace/CHAHAK/bbmm/final-residence-agebs/combined/{PERIOD}Period_{PART}Part_comb.csv",
+    DATA_ROOT / "final-residence-agebs" / "combined" / f"{PERIOD}Period_{PART}Part_comb.csv",
     sep=";",
     header=0,
     names=["id", "ageb_crit2", "ageb_crit1", "loose"],
@@ -70,7 +70,10 @@ for threshold in tqdm(threshold_values):
         json.dump(
             {"alpha_values": temp},
             open(
-                f"/workspace/CHAHAK/bbmm/alpha_values/albert_alpha_values_{PERIOD}_{PART}.json", "w"
+                prepare_output(
+                    DATA_ROOT / "alpha_values" / f"albert_alpha_values_{PERIOD}_{PART}.json"
+                ),
+                "w",
             ),
             indent=4,
         )
@@ -82,6 +85,7 @@ if PLOT:
     ax.grid()
     ax.set_xlabel("threshold")
     ax.set_ylabel("alpha")
-    fig.savefig(f"figures/alpha_variations_sum_normalized_{PERIOD}_{PART}.png", dpi=350)
-# json.dump({'alpha_vals': alpha_values}, open(f"/workspace/CHAHAK/bbmm/alpha_values_{PERIOD}_{PART}.json", "w"), indent=4)
-# json.dump({k: v.tolist() for k, v in thresholded_dict.items()}, open(f"/workspace/CHAHAK/bbmm/thresholded_res_mat_{PERIOD}_{PART}.json", "w"), indent=4)
+    fig.savefig(
+        prepare_output(OUTPUT_ROOT / f"alpha_variations_sum_normalized_{PERIOD}_{PART}.png"),
+        dpi=350,
+    )

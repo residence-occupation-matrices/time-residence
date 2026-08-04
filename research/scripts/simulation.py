@@ -1,32 +1,21 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+# ruff: noqa: E741
 """
 Created on Thu Sep 30 14:35:54 2021
 
 @author: albertakuno
 """
 
-import numpy as np
 import random
-import json
 
-import pandas as pd
-
-from odeintw import odeintw
 import matplotlib.pyplot as plt
-
-residence_matrix = json.load(
-    open("/workspace/CHAHAK/bbmm/normal_avg_res_mat/albert_avg_res_mat_First_First.json", "r")
-)["residence_matrix"]
-residence_matrix = np.array(residence_matrix)
+import numpy as np
+from odeintw import odeintw
 
 
 def systemSEIR(M, t, beta, gama, pstar):
     S, E, I, R = M
     Ntilde = np.transpose(pstar) @ Nbar
-    import pdb
-
-    pdb.set_trace()
     dS_dt = (
         Lambda
         - np.diag(S)
@@ -67,11 +56,11 @@ Nbar = Lambda * 1 / mu
 
 
 # E_initial = rng.integers(low=0, high=20, size=(n))
-E_initial = np.zeros((n))
+E_initial = np.zeros(n)
 
 I_initial = rng.integers(low=0, high=10, size=(n))
 
-R_initial = np.zeros((n))
+R_initial = np.zeros(n)
 S_initial = Nbar - (I_initial + E_initial + R_initial)
 M_initial = np.array([S_initial, E_initial, I_initial, R_initial])
 
@@ -81,16 +70,16 @@ precision = 1000000
 
 def f(n):
     matrix = []
-    for l in range(n):
+    for _ in range(n):
         lineLst = []
-        sum = 0
+        total = 0
         crtPrec = precision
-        for i in range(n - 1):
+        for _ in range(n - 1):
             val = random.randrange(crtPrec)
-            sum += val
+            total += val
             lineLst.append(float(val) / precision)
             crtPrec -= val
-        lineLst.append(float(precision - sum) / precision)
+        lineLst.append(float(precision - total) / precision)
         matrix.append(lineLst)
     return matrix
 
@@ -100,24 +89,21 @@ p = np.array(f(n))
 # n=residence_matrix.shape[0]
 t = np.linspace(0, 200, 100)
 alfa = np.random.default_rng().uniform(size=(n,))
-# alfa=json.load(open('/workspace/CHAHAK/bbmm/alpha_values/albert_alpha_values_First_First.json', 'r'))['alpha_values']
-# alfa=np.array(alfa)
-pstar = np.zeros([n, n])
 
 
-def pstar(p):
-    pstar = np.zeros_like(p)
+def build_pstar(p):
+    result = np.zeros_like(p)
     # p = np.array(f(20))
     for i in range(n):
-        pstar[i, i] = 1 - alfa[i]
+        result[i, i] = 1 - alfa[i]
         for j in range(n):
-            pstar[i, j] += alfa[i] * p[i, j]
-    return pstar
+            result[i, j] += alfa[i] * p[i, j]
+    return result
 
 
 # pstar=pstar(residence_matrix)
 
-pstar = pstar(p)
+pstar = build_pstar(p)
 
 sol = odeintw(systemSEIR, M_initial, t, args=(beta, gamma, pstar))
 

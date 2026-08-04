@@ -1,22 +1,19 @@
+import argparse
 import json
 import logging
-import argparse
-import numpy as np
+
 import pandas as pd
-import geopandas as gpd
-
-from tqdm import tqdm
-tqdm.pandas()
-from residence import calculate_residence_matrix, calculate_sigma
-
 from pandarallel import pandarallel
+from project_paths import DATA_ROOT, prepare_output
+from residence import calculate_residence_matrix, calculate_sigma
+from tqdm import tqdm
 
+tqdm.pandas()
 pandarallel.initialize(nb_workers=48, progress_bar=True)
 
 logging.basicConfig(filename="run.log", filemode="w", level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-import argparse
 
 parser = argparse.ArgumentParser(description="Residence-time runner file.")
 parser.add_argument(
@@ -34,32 +31,25 @@ PART = args.part
 
 logger.debug("Loading GPS data")
 df_ids = pd.read_csv(
-    f"/workspace/CHAHAK/bbmm/final-residence-agebs/combined/{PERIOD}Period_{PART}Part_comb.csv",
+    DATA_ROOT / "final-residence-agebs" / "combined" / f"{PERIOD}Period_{PART}Part_comb.csv",
     sep=";",
     header=0,
     names=["id", "ageb_crit2", "ageb_crit1", "loose"],
 )
-# df_ids = pd.read_csv("/workspace/CHAHAK/bbmm/temp.csv", sep=";", header=0, names=["id", "ageb_crit2", "ageb_crit1", "loose"])
 df_ids["loose"] = df_ids["loose"].astype(int)
 df_full = pd.read_csv(
-    f"/workspace/CHAHAK/bbmm/final-time-periods/criterion_1/{PERIOD}Period_{PART}Part_final.csv",
+    DATA_ROOT / "final-time-periods" / "criterion_1" / f"{PERIOD}Period_{PART}Part_final.csv",
     sep=";",
     header=0,
     names=["id_adv", "timestamp", "lat", "lon", "polygon"],
 )
 df_full["timestamp"] = df_full["timestamp"].astype("datetime64[ns, UTC]")
 ids = set(df_full["id_adv"].unique())
-# df_m2 = pd.read_csv(f"/workspace/CHAHAK/bbmm/final-time-periods/criterion_1/{PERIOD}Period_{PART}Part_final.csv", sep=";")
 # df_m2["timestamp"] = df_m2["timestamp"].astype("datetime64[ns, UTC]")
-# df_m3 = pd.read_csv("/workspace/CHAHAK/bbmm/M3.csv", sep=";")
-# df_m1 = pd.read_csv(f"/workspace/CHAHAK/bbmm/final-time-periods/criterion_1/{PERIOD}Period_{PART}Part_final.csv", sep=";")
 # df_m3["timestamp"] = df_m3["timestamp"].astype("datetime64[ns, UTC]")
 # m1_ids = set(df_m1["id_adv"].unique())
 # m2_ids = set(df_m2["id_adv"].unique())
 # m3_ids = set(df_m3["id_adv"].unique())
-# df_ids_m1 = pd.read_csv("/workspace/CHAHAK/bbmm/ids_M1.csv")
-# df_ids_m2 = pd.read_csv("/workspace/CHAHAK/bbmm/ids_M2.csv")
-# df_ids_m3 = pd.read_csv("/workspace/CHAHAK/bbmm/ids_M3.csv")
 
 logger.debug("All data loaded")
 
@@ -90,11 +80,16 @@ def runner_res_mat():
     residence_matrices = {}
     df_ids["matrix"] = df_ids.parallel_apply(calc_res_mat, axis=1)
 
-    for i, row in tqdm(df_ids.iterrows()):
+    for _i, row in tqdm(df_ids.iterrows()):
         residence_matrices[row["id"]] = row["matrix"]
     json.dump(
         residence_matrices,
-        open(f"/workspace/CHAHAK/bbmm/new_sigma_m/final_residence_matrices_{PERIOD}_{PART}.json", "w"),
+        open(
+            prepare_output(
+                DATA_ROOT / "new_sigma_m" / f"final_residence_matrices_{PERIOD}_{PART}.json"
+            ),
+            "w",
+        ),
         indent=4,
     )
     return
@@ -104,11 +99,14 @@ def runner_sigma():
     sigma_values = {}
     df_ids["sigma"] = df_ids.parallel_apply(calc_sigma, axis=1)
 
-    for i, row in tqdm(df_ids.iterrows()):
+    for _i, row in tqdm(df_ids.iterrows()):
         sigma_values[row["id"]] = row["sigma"]
     json.dump(
         sigma_values,
-        open(f"/workspace/CHAHAK/bbmm/new_sigma_m/sigma_m_{PERIOD}_{PART}.json", "w"),
+        open(
+            prepare_output(DATA_ROOT / "new_sigma_m" / f"sigma_m_{PERIOD}_{PART}.json"),
+            "w",
+        ),
         indent=4,
     )
     return

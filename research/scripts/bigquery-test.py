@@ -13,4 +13,4 @@ AND "2020-12-31"
 results = client.query(query)
 
 for row in results:
-    print(row['counter'])
+    print(row["counter"])
